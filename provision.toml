@@ -1,0 +1,11 @@
+channels = [
+"e649117a-8d70-412f-97f0-c9d56d15f52c",
+]
+
+[[clients]]
+id = "0615afb6-4b4e-483a-a0d8-6c50e9653fd3"
+secret = "21fb8294-952d-41ba-95b1-b2753b553836"
+
+[[clients]]
+id = "9a42a68d-72b1-4f53-af2a-b03a75316998"
+secret = "942e44c2-0eda-436f-a4c6-b455d77dfeb4"
