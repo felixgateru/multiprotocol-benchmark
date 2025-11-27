@@ -122,7 +122,7 @@ type ClientPathConfig struct {
 }
 
 // RunPubSub runs a single publisher and subscriber for WebSocket
-func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) error {
+func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) (published, received int, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stats := NewMessageStats()
@@ -143,9 +143,11 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 	case <-readyChan:
 		logger.Debug("Subscriber ready, starting publisher")
 	case <-time.After(10 * time.Second):
-		return fmt.Errorf("timeout waiting for subscriber to be ready")
+		published, received = stats.GetCounts()
+		return published, received, fmt.Errorf("timeout waiting for subscriber to be ready")
 	case <-ctx.Done():
-		return ctx.Err()
+		published, received = stats.GetCounts()
+		return published, received, ctx.Err()
 	}
 
 	wg.Add(1)
@@ -174,18 +176,19 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 
 	select {
 	case err := <-errChan:
-		return err
+		published, received = stats.GetCounts()
+		return published, received, err
 	default:
 	}
 
 	// Print final statistics with separated publish/subscribe counts
-	published, received := stats.GetCounts()
+	published, received = stats.GetCounts()
 	duration := stats.GetDuration()
 
 	if pubSubConfig.MessageCount == 0 {
 		logger.Info("=== WebSocket Final Statistics ===")
 		logger.Info("No messages configured")
-		return nil
+		return published, received, nil
 	}
 
 	logger.Info("=== WebSocket Final Statistics ===")
@@ -199,17 +202,17 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 
 	if published == pubSubConfig.MessageCount && received == pubSubConfig.MessageCount {
 		logger.Info("Status: SUCCESS - All messages published and received")
-		return nil
+		return published, received, nil
 	}
 
 	if published != pubSubConfig.MessageCount {
-		return fmt.Errorf("incomplete: %d messages published, expected %d", published, pubSubConfig.MessageCount)
+		return published, received, fmt.Errorf("incomplete: %d messages published, expected %d", published, pubSubConfig.MessageCount)
 	}
 	if received != pubSubConfig.MessageCount {
-		return fmt.Errorf("incomplete: %d messages received, expected %d", received, pubSubConfig.MessageCount)
+		return published, received, fmt.Errorf("incomplete: %d messages received, expected %d", received, pubSubConfig.MessageCount)
 	}
 
-	return nil
+	return published, received, nil
 }
 
 func publishMessages(ctx context.Context, clientConfig ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, logger *slog.Logger) error {

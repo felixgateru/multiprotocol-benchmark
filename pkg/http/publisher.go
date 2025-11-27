@@ -259,7 +259,7 @@ func publishMessages(ctx context.Context, client *http.Client, config ClientConf
 	logger.Debug("Publisher: all messages sent")
 }
 
-func RunPublish(clientConfig ClientConfig, pubConfig PublishConfig, logger *slog.Logger) error {
+func RunPublish(clientConfig ClientConfig, pubConfig PublishConfig, logger *slog.Logger) (published, success, failure int, err error) {
 	stats := NewMessageStats()
 
 	httpClient := createHTTPClient(10*time.Second, pubConfig.TLSConfig)
@@ -288,7 +288,7 @@ func RunPublish(clientConfig ClientConfig, pubConfig PublishConfig, logger *slog
 	stats.SetEndTime()
 
 	// Print final statistics with enhanced output
-	published, success, failure := stats.GetCounts()
+	published, success, failure = stats.GetCounts()
 	duration := stats.GetDuration()
 	avgResponseTime := stats.GetAverageResponseTime()
 	minRT, maxRT := stats.GetMinMaxResponseTime()
@@ -308,12 +308,12 @@ func RunPublish(clientConfig ClientConfig, pubConfig PublishConfig, logger *slog
 
 	if published == pubConfig.MessageCount && success == pubConfig.MessageCount {
 		logger.Info("Status: SUCCESS - All messages published successfully")
-		return nil
+		return published, success, failure, nil
 	} else if failure > 0 {
-		return fmt.Errorf("incomplete: %d messages published but %d failed", published, failure)
+		return published, success, failure, fmt.Errorf("incomplete: %d messages published but %d failed", published, failure)
 	} else if published < pubConfig.MessageCount {
-		return fmt.Errorf("incomplete: only %d/%d messages published", published, pubConfig.MessageCount)
+		return published, success, failure, fmt.Errorf("incomplete: only %d/%d messages published", published, pubConfig.MessageCount)
 	}
 
-	return nil
+	return published, success, failure, nil
 }

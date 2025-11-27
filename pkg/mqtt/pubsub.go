@@ -124,12 +124,12 @@ func (ms *MessageStats) GetDuration() time.Duration {
 	return ms.endTime.Sub(ms.startTime)
 }
 
-func createMQTTClient(config ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) (mqtt.Client, error) {
+func createMQTTClient(cancel context.CancelFunc, config ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) (mqtt.Client, error) {
 	var client mqtt.Client
 
 	retryConfig := pkg.RetryConfig{
-		Timeout:    pubSubConfig.Timeout,
-		Logger:     logger,
+		Timeout: pubSubConfig.Timeout,
+		Logger:  logger,
 	}
 
 	err := pkg.RetryWithExponentialBackoff(retryConfig, func() error {
@@ -148,6 +148,7 @@ func createMQTTClient(config ClientConfig, pubSubConfig PubSubConfig, logger *sl
 
 		opts.SetConnectionLostHandler(func(client mqtt.Client, err error) {
 			logger.Warn("MQTT connection lost", "error", err)
+			cancel()
 		})
 		opts.SetOnConnectHandler(func(client mqtt.Client) {
 			logger.Debug("MQTT connected to broker", "broker", config.Broker)
@@ -261,27 +262,26 @@ func subscribeMessages(ctx context.Context, client mqtt.Client, config ClientCon
 	}
 }
 
-func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) error {
+func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) (published, received int, err error) {
 	stats := NewMessageStats()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	pubClientConfig := clientConfig
 	pubClientConfig.ClientID = fmt.Sprintf("%s-pub", clientConfig.ClientID)
-	pubClient, err := createMQTTClient(pubClientConfig, pubSubConfig, logger)
-	if err != nil {
-		return fmt.Errorf("failed to create publisher client: %w", err)
+	pubClient, createErr := createMQTTClient(cancel, pubClientConfig, pubSubConfig, logger)
+	if createErr != nil {
+		return 0, 0, fmt.Errorf("failed to create publisher client: %w", createErr)
 	}
 	defer pubClient.Disconnect(250)
 
 	subClientConfig := clientConfig
 	subClientConfig.ClientID = fmt.Sprintf("%s-sub", clientConfig.ClientID)
-	subClient, err := createMQTTClient(subClientConfig, pubSubConfig, logger)
-	if err != nil {
-		return fmt.Errorf("failed to create subscriber client: %w", err)
+	subClient, createErr := createMQTTClient(cancel, subClientConfig, pubSubConfig, logger)
+	if createErr != nil {
+		return 0, 0, fmt.Errorf("failed to create subscriber client: %w", createErr)
 	}
 	defer subClient.Disconnect(250)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var wg sync.WaitGroup
 
@@ -297,7 +297,8 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 	case <-time.After(5 * time.Second):
 		logger.Warn("MQTT subscriber took too long to be ready, starting publisher anyway")
 	case <-ctx.Done():
-		return fmt.Errorf("context cancelled while waiting for subscriber")
+		published, received := stats.GetCounts()
+		return published, received, fmt.Errorf("context cancelled while waiting for subscriber")
 	}
 
 	wg.Add(1)
@@ -319,7 +320,7 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 	stats.SetEndTime()
 
 	// Print final statistics with separated publish/subscribe counts
-	published, received := stats.GetCounts()
+	published, received = stats.GetCounts()
 	duration := stats.GetDuration()
 
 	var pubSuccessRate, subSuccessRate float64
@@ -338,12 +339,12 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 
 	if published == pubSubConfig.MessageCount && received == pubSubConfig.MessageCount {
 		logger.Info("MQTT Status: SUCCESS - All messages published and received")
-		return nil
+		return published, received, nil
 	} else if received < published {
-		return fmt.Errorf("incomplete: %d messages published but only %d received", published, received)
+		return published, received, fmt.Errorf("incomplete: %d messages published but only %d received", published, received)
 	} else if published < pubSubConfig.MessageCount {
-		return fmt.Errorf("incomplete: only %d/%d messages published", published, pubSubConfig.MessageCount)
+		return published, received, fmt.Errorf("incomplete: only %d/%d messages published", published, pubSubConfig.MessageCount)
 	}
 
-	return nil
+	return published, received, nil
 }

@@ -309,7 +309,7 @@ func testMQTTPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap 
 				logger.Debug("Starting MQTT Pub/Sub", "ClientID", clID, "Topic", topic)
 
 				startTime := time.Now()
-				err := pkgmqtt.RunPubSub(clientCfg, pubSubCfg, logger)
+				published, received, err := pkgmqtt.RunPubSub(clientCfg, pubSubCfg, logger)
 				duration := time.Since(startTime)
 
 				result := TestResult{
@@ -320,9 +320,9 @@ func testMQTTPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap 
 					Success:           err == nil,
 					Error:             err,
 					Duration:          duration,
-					Messages:          cfg.MQTTMessageCount * 2, // pub + sub
-					PublishedMessages: cfg.MQTTMessageCount,
-					ReceivedMessages:  cfg.MQTTMessageCount,
+					Messages:          published + received,
+					PublishedMessages: published,
+					ReceivedMessages:  received,
 				}
 				aggregator.AddResult(result)
 
@@ -366,7 +366,7 @@ func testCOAPPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap 
 				logger.Debug("Starting COAP Pub/Sub", "ClientID", clID, "Topic", topic)
 
 				startTime := time.Now()
-				err := pkgcoap.RunPubSub(clientCfg, pubSubCfg, logger)
+				published, received, err := pkgcoap.RunPubSub(clientCfg, pubSubCfg, *logger)
 				duration := time.Since(startTime)
 
 				result := TestResult{
@@ -377,9 +377,9 @@ func testCOAPPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap 
 					Success:           err == nil,
 					Error:             err,
 					Duration:          duration,
-					Messages:          cfg.COAPMessageCount * 2,
-					PublishedMessages: cfg.COAPMessageCount,
-					ReceivedMessages:  cfg.COAPMessageCount,
+					Messages:          published + received,
+					PublishedMessages: published,
+					ReceivedMessages:  received,
 				}
 				aggregator.AddResult(result)
 
@@ -426,7 +426,7 @@ func testHTTPPublish(cfg Config, clientIDs, channelIDs []string, clientSecretMap
 				logger.Debug("Starting HTTP Publish", "ClientID", clID, "Endpoint", endpoint)
 
 				startTime := time.Now()
-				err := pkghttp.RunPublish(clientCfg, pubCfg, logger)
+				published, _, _, err := pkghttp.RunPublish(clientCfg, pubCfg, logger)
 				duration := time.Since(startTime)
 
 				result := TestResult{
@@ -437,8 +437,8 @@ func testHTTPPublish(cfg Config, clientIDs, channelIDs []string, clientSecretMap
 					Success:           err == nil,
 					Error:             err,
 					Duration:          duration,
-					Messages:          cfg.HTTPMessageCount, // publish only
-					PublishedMessages: cfg.HTTPMessageCount,
+					Messages:          published,
+					PublishedMessages: published,
 					ReceivedMessages:  0, // HTTP is publish-only
 				}
 				aggregator.AddResult(result)
@@ -484,7 +484,7 @@ func testWSPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap ma
 				logger.Debug("Starting WebSocket Pub/Sub", "ClientID", clID, "Topic", topic)
 
 				startTime := time.Now()
-				err := pkgws.RunPubSub(clientCfg, pubCfg, logger)
+				published, received, err := pkgws.RunPubSub(clientCfg, pubCfg, logger)
 				duration := time.Since(startTime)
 
 				result := TestResult{
@@ -495,9 +495,9 @@ func testWSPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap ma
 					Success:           err == nil,
 					Error:             err,
 					Duration:          duration,
-					Messages:          cfg.WSMessageCount * 2, // pub + sub
-					PublishedMessages: cfg.WSMessageCount,
-					ReceivedMessages:  cfg.WSMessageCount,
+					Messages:          published + received,
+					PublishedMessages: published,
+					ReceivedMessages:  received,
 				}
 				aggregator.AddResult(result)
 

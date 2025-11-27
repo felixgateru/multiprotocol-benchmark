@@ -254,18 +254,18 @@ func observeMessages(ctx context.Context, conn *client.Conn, config ClientConfig
 	}
 }
 
-func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) error {
+func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog.Logger) (published, received int, err error) {
 	stats := NewMessageStats()
 
-	pubConn, err := createCoapClient(clientConfig, pubSubConfig, logger)
-	if err != nil {
-		return fmt.Errorf("failed to create publisher connection: %w", err)
+	pubConn, createErr := createCoapClient(clientConfig, pubSubConfig, &logger)
+	if createErr != nil {
+		return 0, 0, fmt.Errorf("failed to create publisher connection: %w", createErr)
 	}
 	defer pubConn.Close()
 
-	obsConn, err := createCoapClient(clientConfig, pubSubConfig, logger)
-	if err != nil {
-		return fmt.Errorf("failed to create observer connection: %w", err)
+	obsConn, createErr := createCoapClient(clientConfig, pubSubConfig, &logger)
+	if createErr != nil {
+		return 0, 0, fmt.Errorf("failed to create observer connection: %w", createErr)
 	}
 	defer obsConn.Close()
 
@@ -277,7 +277,7 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 	obsReady := make(chan struct{})
 
 	wg.Add(1)
-	go observeMessages(ctx, obsConn, clientConfig, pubSubConfig, stats, obsReady, &wg, logger)
+	go observeMessages(ctx, obsConn, clientConfig, pubSubConfig, stats, obsReady, &wg, &logger)
 
 	logger.Debug("Waiting for observer to be ready...")
 	select {
@@ -286,11 +286,12 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 	case <-time.After(5 * time.Second):
 		logger.Warn("Observer took too long to be ready, starting publisher anyway")
 	case <-ctx.Done():
-		return fmt.Errorf("context cancelled while waiting for observer")
+		published, received = stats.GetCounts()
+		return published, received, fmt.Errorf("context cancelled while waiting for observer")
 	}
 
 	wg.Add(1)
-	go publishMessages(ctx, pubConn, clientConfig, pubSubConfig, stats, &wg, logger)
+	go publishMessages(ctx, pubConn, clientConfig, pubSubConfig, stats, &wg, &logger)
 
 	done := make(chan struct{})
 	go func() {
@@ -307,7 +308,7 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 
 	stats.SetEndTime()
 
-	published, received := stats.GetCounts()
+	published, received = stats.GetCounts()
 	duration := stats.GetDuration()
 
 	logger.Info("=== CoAP Final Statistics ===")
@@ -321,12 +322,12 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slo
 
 	if published == pubSubConfig.MessageCount && received == pubSubConfig.MessageCount {
 		logger.Info("Status: SUCCESS - All messages published and received")
-		return nil
+		return published, received, nil
 	} else if received < published {
-		return fmt.Errorf("incomplete: %d messages published but only %d received", published, received)
+		return published, received, fmt.Errorf("incomplete: %d messages published but only %d received", published, received)
 	} else if published < pubSubConfig.MessageCount {
-		return fmt.Errorf("incomplete: only %d/%d messages published", published, pubSubConfig.MessageCount)
+		return published, received, fmt.Errorf("incomplete: only %d/%d messages published", published, pubSubConfig.MessageCount)
 	}
 
-	return nil
+	return published, received, nil
 }
