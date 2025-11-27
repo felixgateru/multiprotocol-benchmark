@@ -116,8 +116,11 @@ func main() {
 	var prov ProvisionFile
 	var channelIDs, clientIDs []string
 	clientSecretMap := make(map[string]string)
+	createdResources := false
+
 	switch cfg.ProvisionFile {
 	case "":
+		createdResources = true
 		var channels []sdk.Channel
 		for i := 0; i < cfg.ChannelCount; i++ {
 			ch, err := channelsSDK.CreateChannel(ctx, cfg.DomainID, token.AccessToken)
@@ -252,6 +255,15 @@ func main() {
 		logger.Info("Results saved to file", "file", resultsFile)
 	}
 
+	if createdResources && len(channelIDs) > 0 && len(clientIDs) > 0 {
+		logger.Info("Cleaning up  provisioned resources")
+		if err := cleanUpProvision(context.Background(), channelIDs, clientIDs, cfg.DomainID, token.AccessToken, channelsSDK, clientsSDK, logger); err == nil {
+			logger.Info("Cleanup completed successfully")
+			exitCode = 0
+			return
+		}
+		logger.Error("Cleanup failed", "error", err)
+	}
 }
 
 func getIDS(objects any) []string {
@@ -302,14 +314,16 @@ func testMQTTPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap 
 				duration := time.Since(startTime)
 
 				result := TestResult{
-					Protocol:  "MQTT",
-					ClientID:  clID,
-					ChannelID: chID,
-					Topic:     topic,
-					Success:   err == nil,
-					Error:     err,
-					Duration:  duration,
-					Messages:  cfg.MQTTMessageCount * 2, // pub + sub
+					Protocol:          "MQTT",
+					ClientID:          clID,
+					ChannelID:         chID,
+					Topic:             topic,
+					Success:           err == nil,
+					Error:             err,
+					Duration:          duration,
+					Messages:          cfg.MQTTMessageCount * 2, // pub + sub
+					PublishedMessages: cfg.MQTTMessageCount,
+					ReceivedMessages:  cfg.MQTTMessageCount,
 				}
 				aggregator.AddResult(result)
 
@@ -357,14 +371,16 @@ func testCOAPPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap 
 				duration := time.Since(startTime)
 
 				result := TestResult{
-					Protocol:  "CoAP",
-					ClientID:  clID,
-					ChannelID: chID,
-					Topic:     topic,
-					Success:   err == nil,
-					Error:     err,
-					Duration:  duration,
-					Messages:  cfg.COAPMessageCount * 2,
+					Protocol:          "CoAP",
+					ClientID:          clID,
+					ChannelID:         chID,
+					Topic:             topic,
+					Success:           err == nil,
+					Error:             err,
+					Duration:          duration,
+					Messages:          cfg.COAPMessageCount * 2,
+					PublishedMessages: cfg.COAPMessageCount,
+					ReceivedMessages:  cfg.COAPMessageCount,
 				}
 				aggregator.AddResult(result)
 
@@ -415,14 +431,16 @@ func testHTTPPublish(cfg Config, clientIDs, channelIDs []string, clientSecretMap
 				duration := time.Since(startTime)
 
 				result := TestResult{
-					Protocol:  "HTTP",
-					ClientID:  clID,
-					ChannelID: chID,
-					Topic:     endpoint,
-					Success:   err == nil,
-					Error:     err,
-					Duration:  duration,
-					Messages:  cfg.HTTPMessageCount, // publish only
+					Protocol:          "HTTP",
+					ClientID:          clID,
+					ChannelID:         chID,
+					Topic:             endpoint,
+					Success:           err == nil,
+					Error:             err,
+					Duration:          duration,
+					Messages:          cfg.HTTPMessageCount, // publish only
+					PublishedMessages: cfg.HTTPMessageCount,
+					ReceivedMessages:  0, // HTTP is publish-only
 				}
 				aggregator.AddResult(result)
 
@@ -471,14 +489,16 @@ func testWSPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap ma
 				duration := time.Since(startTime)
 
 				result := TestResult{
-					Protocol:  "WebSocket",
-					ClientID:  clID,
-					ChannelID: chID,
-					Topic:     topic,
-					Success:   err == nil,
-					Error:     err,
-					Duration:  duration,
-					Messages:  cfg.WSMessageCount * 2, // pub + sub
+					Protocol:          "WebSocket",
+					ClientID:          clID,
+					ChannelID:         chID,
+					Topic:             topic,
+					Success:           err == nil,
+					Error:             err,
+					Duration:          duration,
+					Messages:          cfg.WSMessageCount * 2, // pub + sub
+					PublishedMessages: cfg.WSMessageCount,
+					ReceivedMessages:  cfg.WSMessageCount,
 				}
 				aggregator.AddResult(result)
 
@@ -504,4 +524,25 @@ func buildClientSecretMap(clients []sdk.Client) map[string]string {
 		secretMap[client.ID] = client.Credentials.Secret
 	}
 	return secretMap
+}
+
+func cleanUpProvision(ctx context.Context, channelIDs, clientIDs []string, domainID, token string, channelsSDK *pkg.Channels, clientsSDK *pkg.Clients, logger *slog.Logger) error {
+	var hasErrors bool
+	for _, chID := range channelIDs {
+		if err := channelsSDK.DeleteChannel(ctx, chID, domainID, token); err != nil {
+			logger.Warn("Failed to delete channel", "channel_id", chID, "error", err)
+			hasErrors = true
+		}
+	}
+	for _, clID := range clientIDs {
+		if err := clientsSDK.DeleteClient(ctx, clID, domainID, token); err != nil {
+			logger.Warn("Failed to delete client", "client_id", clID, "error", err)
+			hasErrors = true
+		}
+	}
+	if hasErrors {
+		return fmt.Errorf("some resources failed to delete")
+	}
+
+	return nil
 }

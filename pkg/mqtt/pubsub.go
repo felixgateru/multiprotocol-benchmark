@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/felixgateru/multiprotocol-benchmark/pkg"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/felixgateru/multiprotocol-benchmark/pkg"
 )
 
 type ClientConfig struct {
@@ -125,29 +125,45 @@ func (ms *MessageStats) GetDuration() time.Duration {
 }
 
 func createMQTTClient(config ClientConfig, pubSubConfig PubSubConfig, logger slog.Logger) (mqtt.Client, error) {
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(config.Broker)
-	opts.SetClientID(config.ClientID)
-	opts.SetUsername(config.Username)
-	opts.SetPassword(config.Password)
-	opts.SetCleanSession(true)
-	opts.SetAutoReconnect(true)
+	var client mqtt.Client
 
-	// Set TLS configuration if provided
-	if pubSubConfig.TLSConfig != nil {
-		opts.SetTLSConfig(pubSubConfig.TLSConfig)
+	retryConfig := pkg.RetryConfig{
+		MaxRetries: pkg.MaxRetries,
+		Timeout:    pubSubConfig.Timeout,
+		Logger:     logger,
 	}
 
-	opts.SetConnectionLostHandler(func(client mqtt.Client, err error) {
-		logger.Warn("MQTT connection lost", "error", err)
-	})
-	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		logger.Debug("MQTT connected to broker", "broker", config.Broker)
-	})
+	err := pkg.RetryWithExponentialBackoff(retryConfig, func() error {
+		opts := mqtt.NewClientOptions()
+		opts.AddBroker(config.Broker)
+		opts.SetClientID(config.ClientID)
+		opts.SetUsername(config.Username)
+		opts.SetPassword(config.Password)
+		opts.SetCleanSession(true)
+		opts.SetAutoReconnect(true)
 
-	client := mqtt.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		return nil, fmt.Errorf("failed to connect to broker: %w", token.Error())
+		// Set TLS configuration if provided
+		if pubSubConfig.TLSConfig != nil {
+			opts.SetTLSConfig(pubSubConfig.TLSConfig)
+		}
+
+		opts.SetConnectionLostHandler(func(client mqtt.Client, err error) {
+			logger.Warn("MQTT connection lost", "error", err)
+		})
+		opts.SetOnConnectHandler(func(client mqtt.Client) {
+			logger.Debug("MQTT connected to broker", "broker", config.Broker)
+		})
+
+		client = mqtt.NewClient(opts)
+		if token := client.Connect(); token.Wait() && token.Error() != nil {
+			return fmt.Errorf("failed to connect to broker: %w", token.Error())
+		}
+
+		return nil
+	}, fmt.Sprintf("MQTT connection to %s", config.Broker))
+
+	if err != nil {
+		return nil, err
 	}
 
 	return client, nil
@@ -303,20 +319,26 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog
 
 	stats.SetEndTime()
 
-	// Print final statistics
+	// Print final statistics with separated publish/subscribe counts
 	published, received := stats.GetCounts()
 	duration := stats.GetDuration()
 
-	logger.Info("MQTT Final Statistics",
-		"messages_published", fmt.Sprintf("%d/%d", published, pubSubConfig.MessageCount),
-		"messages_received", fmt.Sprintf("%d/%d", received, pubSubConfig.MessageCount),
-		"duration", duration)
+	logger.Info("=== MQTT Final Statistics ===")
+	logger.Info("Publishing Statistics:",
+		"published", fmt.Sprintf("%d/%d", published, pubSubConfig.MessageCount),
+		"success_rate", fmt.Sprintf("%.2f%%", float64(published)/float64(pubSubConfig.MessageCount)*100))
+	logger.Info("Subscription Statistics:",
+		"received", fmt.Sprintf("%d/%d", received, pubSubConfig.MessageCount),
+		"success_rate", fmt.Sprintf("%.2f%%", float64(received)/float64(pubSubConfig.MessageCount)*100))
+	logger.Info("Overall:", "duration", duration)
 
 	if published == pubSubConfig.MessageCount && received == pubSubConfig.MessageCount {
 		logger.Info("MQTT Status: SUCCESS - All messages published and received")
 		return nil
 	} else if received < published {
 		return fmt.Errorf("incomplete: %d messages published but only %d received", published, received)
+	} else if published < pubSubConfig.MessageCount {
+		return fmt.Errorf("incomplete: only %d/%d messages published", published, pubSubConfig.MessageCount)
 	}
 
 	return nil

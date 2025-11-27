@@ -194,6 +194,12 @@ func publishMessages(ctx context.Context, client *http.Client, config ClientConf
 	logger.Debug("url", "url", url)
 	logger.Debug("Starting publisher", "message_count", pubConfig.MessageCount, "url", url, "delay", pubConfig.Delay)
 
+	retryConfig := pkg.RetryConfig{
+		MaxRetries: pkg.MaxRetries,
+		Timeout:    pubConfig.Timeout,
+		Logger:     logger,
+	}
+
 	for i := 1; i <= pubConfig.MessageCount; i++ {
 		select {
 		case <-ctx.Done():
@@ -212,39 +218,40 @@ func publishMessages(ctx context.Context, client *http.Client, config ClientConf
 			startTime := time.Now()
 			success := false
 
-			req, err := http.NewRequestWithContext(ctx, pubConfig.Method, url, bytes.NewBufferString(payload))
-			if err != nil {
-				logger.Warn("Failed to create request", "message_id", i, "error", err)
-				stats.IncrementPublished(i, false, time.Since(startTime))
-				continue
-			}
+			// Retry logic for publishing
+			err = pkg.RetryWithExponentialBackoff(retryConfig, func() error {
+				req, reqErr := http.NewRequestWithContext(ctx, pubConfig.Method, url, bytes.NewBufferString(payload))
+				if reqErr != nil {
+					return fmt.Errorf("failed to create request: %w", reqErr)
+				}
 
-			req.Header.Set("Content-Type", "application/senml+json")
-			for key, value := range config.Headers {
-				req.Header.Set(key, value)
-			}
+				req.Header.Set("Content-Type", "application/senml+json")
+				for key, value := range config.Headers {
+					req.Header.Set(key, value)
+				}
 
-			for k, v := range config.Headers {
-				req.Header.Set(k, v)
-			}
+				resp, doErr := client.Do(req)
+				if doErr != nil {
+					return fmt.Errorf("failed to send request: %w", doErr)
+				}
+				defer resp.Body.Close()
 
-			resp, err := client.Do(req)
+				body, _ := io.ReadAll(resp.Body)
+
+				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+					success = true
+					return nil
+				}
+
+				return fmt.Errorf("got status code %d: %s", resp.StatusCode, string(body))
+			}, fmt.Sprintf("HTTP publish message %d", i))
+
 			responseTime := time.Since(startTime)
 
 			if err != nil {
-				logger.Warn("Failed to publish message", "message_id", i, "error", err)
-				stats.IncrementPublished(i, false, responseTime)
-				continue
-			}
-
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				success = true
-				logger.Debug("Published message", "message_id", i, "status", resp.StatusCode, "response_time", responseTime)
+				logger.Warn("Failed to publish message after retries", "message_id", i, "error", err)
 			} else {
-				logger.Debug("Published message but got error", "message_id", i, "status", resp.StatusCode, "body", string(body))
+				logger.Debug("Published message", "message_id", i, "response_time", responseTime)
 			}
 
 			stats.IncrementPublished(i, success, responseTime)
@@ -286,28 +293,32 @@ func RunPublish(clientConfig ClientConfig, pubConfig PublishConfig, logger slog.
 
 	stats.SetEndTime()
 
-	// Print final statistics
+	// Print final statistics with enhanced output
 	published, success, failure := stats.GetCounts()
 	duration := stats.GetDuration()
 	avgResponseTime := stats.GetAverageResponseTime()
 	minRT, maxRT := stats.GetMinMaxResponseTime()
 
-	logger.Info("Final Statistics ===")
-	logger.Debug("Messages Published", "published", published, "total", pubConfig.MessageCount)
-	logger.Debug("Successful", "count", success)
-	logger.Debug("Failed", "count", failure)
-	logger.Debug("Success Rate", "rate", fmt.Sprintf("%.2f%%", float64(success)/float64(published)*100))
-	logger.Debug("Total Duration", "duration", duration)
-	logger.Debug("Average Response Time", "time", avgResponseTime)
-	logger.Debug("Min Response Time", "time", minRT)
-	logger.Debug("Max Response Time", "time", maxRT)
-	logger.Debug("Throughput", "rate", fmt.Sprintf("%.2f msgs/sec", float64(published)/duration.Seconds()))
+	logger.Info("=== HTTP Final Statistics ===")
+	logger.Info("Publishing Statistics:",
+		"attempted", fmt.Sprintf("%d/%d", published, pubConfig.MessageCount),
+		"successful", success,
+		"failed", failure,
+		"success_rate", fmt.Sprintf("%.2f%%", float64(success)/float64(published)*100))
+	logger.Info("Performance Metrics:",
+		"duration", duration,
+		"throughput", fmt.Sprintf("%.2f msgs/sec", float64(published)/duration.Seconds()),
+		"avg_response_time", avgResponseTime,
+		"min_response_time", minRT,
+		"max_response_time", maxRT)
 
 	if published == pubConfig.MessageCount && success == pubConfig.MessageCount {
 		logger.Info("Status: SUCCESS - All messages published successfully")
 		return nil
 	} else if failure > 0 {
 		return fmt.Errorf("incomplete: %d messages published but %d failed", published, failure)
+	} else if published < pubConfig.MessageCount {
+		return fmt.Errorf("incomplete: only %d/%d messages published", published, pubConfig.MessageCount)
 	}
 
 	return nil

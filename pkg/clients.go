@@ -9,21 +9,21 @@ import (
 	"github.com/absmach/supermq/pkg/sdk"
 )
 
-type clients struct {
+type Clients struct {
 	sdk     sdk.SDK
 	nameGen namegenerator.NameGenerator
 	idp     supermq.IDProvider
 }
 
-func NewClientsSDK(s sdk.SDK, idp supermq.IDProvider) *clients {
-	return &clients{
+func NewClientsSDK(s sdk.SDK, idp supermq.IDProvider) *Clients {
+	return &Clients{
 		sdk:     s,
 		nameGen: namegenerator.NewGenerator(),
 		idp:     idp,
 	}
 }
 
-func (ct *clients) CreateClient(ctx context.Context, domainID, token string) (sdk.Client, error) {
+func (ct *Clients) CreateClient(ctx context.Context, domainID, token string) (sdk.Client, error) {
 	secret, err := ct.idp.ID()
 	if err != nil {
 		return sdk.Client{}, fmt.Errorf("failed to generate client secret : %v", err)
@@ -45,7 +45,7 @@ func (ct *clients) CreateClient(ctx context.Context, domainID, token string) (sd
 	return client, nil
 }
 
-func (ct *clients) CreateClients(ctx context.Context, domainID, token string, n int) ([]sdk.Client, error) {
+func (ct *Clients) CreateClients(ctx context.Context, domainID, token string, n int) ([]sdk.Client, error) {
 	clis := []sdk.Client{}
 	for range n {
 		secret, err := ct.idp.ID()
@@ -63,10 +63,10 @@ func (ct *clients) CreateClients(ctx context.Context, domainID, token string, n 
 
 	createdClients, err := ct.sdk.CreateClients(ctx, clis, domainID, token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create clients : %v", err)
+		return nil, fmt.Errorf("failed to create Clients : %v", err)
 	}
 	if len(createdClients) != n {
-		return nil, fmt.Errorf("number of created clients mismatch: got %d, want %d", len(createdClients), n)
+		return nil, fmt.Errorf("number of created Clients mismatch: got %d, want %d", len(createdClients), n)
 	}
 	for _, client := range createdClients {
 		if client.ID == "" {
@@ -77,14 +77,22 @@ func (ct *clients) CreateClients(ctx context.Context, domainID, token string, n 
 	return createdClients, nil
 }
 
-func (ct *clients) ListClients(ctx context.Context, domain, token string, expectedNo int) error {
+func (ct *Clients) ListClients(ctx context.Context, domain, token string, expectedNo int) error {
 	cp, err := ct.sdk.Clients(ctx, sdk.PageMetadata{}, domain, token)
 	if err != nil {
-		return fmt.Errorf("failed to list clients : %v", err)
+		return fmt.Errorf("failed to list Clients : %v", err)
 	}
 	if len(cp.Clients) < expectedNo {
-		return fmt.Errorf("number of listed clients less than expected: got %d, want at least %d", len(cp.Clients), expectedNo)
+		return fmt.Errorf("number of listed Clients less than expected: got %d, want at least %d", len(cp.Clients), expectedNo)
 	}
 
+	return nil
+}
+
+func (ct *Clients) DeleteClient(ctx context.Context, clientID, domainID, token string) error {
+	err := ct.sdk.DeleteClient(ctx, clientID, domainID, token)
+	if err != nil {
+		return fmt.Errorf("failed to delete client : %v", err)
+	}
 	return nil
 }

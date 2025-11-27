@@ -129,15 +129,30 @@ type ClientPathConfig struct {
 }
 
 func createCoapClient(config ClientConfig, pubSubConfig PubSubConfig, logger slog.Logger) (*client.Conn, error) {
+	var conn *client.Conn
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	dtlsCfg := &piondtls.Config{
-		InsecureSkipVerify: true,
-		RootCAs:            pubSubConfig.TLSConfig.RootCAs,
+	retryConfig := pkg.RetryConfig{
+		MaxRetries: pkg.MaxRetries,
+		Timeout:    pubSubConfig.Timeout,
+		Logger:     logger,
 	}
-	conn, err := dtls.Dial(addr, dtlsCfg)
+
+	err := pkg.RetryWithExponentialBackoff(retryConfig, func() error {
+		dtlsCfg := &piondtls.Config{
+			InsecureSkipVerify: true,
+			RootCAs:            pubSubConfig.TLSConfig.RootCAs,
+		}
+		var dialErr error
+		conn, dialErr = dtls.Dial(addr, dtlsCfg)
+		if dialErr != nil {
+			return fmt.Errorf("failed to dial CoAP server: %w", dialErr)
+		}
+		return nil
+	}, fmt.Sprintf("CoAP connection to %s", addr))
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial CoAP server: %w", err)
+		return nil, err
 	}
 
 	logger.Debug("Connected to CoAP server", "addr", addr)
@@ -310,16 +325,22 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog
 	published, received := stats.GetCounts()
 	duration := stats.GetDuration()
 
-	logger.Info("Final Statistics ===")
-	logger.Info("Final Statistics ===")
-	logger.Debug("Messages Published", "published", published, "expected", pubSubConfig.MessageCount)
-	logger.Debug("Messages Received", "received", received, "expected", pubSubConfig.MessageCount)
-	logger.Debug("Total Duration", "duration", duration)
+	logger.Info("=== CoAP Final Statistics ===")
+	logger.Info("Publishing Statistics:",
+		"published", fmt.Sprintf("%d/%d", published, pubSubConfig.MessageCount),
+		"success_rate", fmt.Sprintf("%.2f%%", float64(published)/float64(pubSubConfig.MessageCount)*100))
+	logger.Info("Observation Statistics:",
+		"received", fmt.Sprintf("%d/%d", received, pubSubConfig.MessageCount),
+		"success_rate", fmt.Sprintf("%.2f%%", float64(received)/float64(pubSubConfig.MessageCount)*100))
+	logger.Info("Overall:", "duration", duration)
+
 	if published == pubSubConfig.MessageCount && received == pubSubConfig.MessageCount {
 		logger.Info("Status: SUCCESS - All messages published and received")
 		return nil
 	} else if received < published {
 		return fmt.Errorf("incomplete: %d messages published but only %d received", published, received)
+	} else if published < pubSubConfig.MessageCount {
+		return fmt.Errorf("incomplete: only %d/%d messages published", published, pubSubConfig.MessageCount)
 	}
 
 	return nil

@@ -11,21 +11,21 @@ import (
 
 const routePrefix string = "a"
 
-type domains struct {
+type Domains struct {
 	sdk     sdk.SDK
 	nameGen namegenerator.NameGenerator
 	idp     supermq.IDProvider
 }
 
-func NewDomainsSDK(s sdk.SDK, idp supermq.IDProvider) *domains {
-	return &domains{
+func NewDomainsSDK(s sdk.SDK, idp supermq.IDProvider) *Domains {
+	return &Domains{
 		sdk:     s,
 		nameGen: namegenerator.NewGenerator(),
 		idp:     idp,
 	}
 }
 
-func (dt *domains) CreateDomain(ctx context.Context, token string) (sdk.Domain, error) {
+func (dt *Domains) CreateDomain(ctx context.Context, token string) (sdk.Domain, error) {
 	route, err := dt.idp.ID()
 	if err != nil {
 		return sdk.Domain{}, fmt.Errorf("failed to generate domain route : %v", err)
@@ -45,13 +45,13 @@ func (dt *domains) CreateDomain(ctx context.Context, token string) (sdk.Domain, 
 	return createdDom, nil
 }
 
-func (dt *domains) ListDomains(ctx context.Context, token string, noExpected int) error {
+func (dt *Domains) ListDomains(ctx context.Context, token string, noExpected int) error {
 	domp, err := dt.sdk.Domains(ctx, sdk.PageMetadata{}, token)
 	if err != nil {
-		return fmt.Errorf("failed to list domains : %v", err)
+		return fmt.Errorf("failed to list Domains : %v", err)
 	}
 	if len(domp.Domains) < noExpected {
-		return fmt.Errorf("listed domains count less than expected: got %d, want at least %d", len(domp.Domains), noExpected)
+		return fmt.Errorf("listed Domains count less than expected: got %d, want at least %d", len(domp.Domains), noExpected)
 	}
 
 	return nil

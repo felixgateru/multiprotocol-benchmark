@@ -178,17 +178,21 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog
 	default:
 	}
 
-	// Print final statistics
+	// Print final statistics with separated publish/subscribe counts
 	published, received := stats.GetCounts()
 	duration := stats.GetDuration()
 
-	logger.Info("Final Statistics ===")
-	logger.Debug(fmt.Sprintf("Messages Published: %d/%d", published, pubSubConfig.MessageCount))
-	logger.Debug(fmt.Sprintf("Messages Received: %d/%d", received, pubSubConfig.MessageCount))
-	logger.Debug(fmt.Sprintf("Total Duration: %v", duration))
+	logger.Info("=== WebSocket Final Statistics ===")
+	logger.Info("Publishing Statistics:",
+		"published", fmt.Sprintf("%d/%d", published, pubSubConfig.MessageCount),
+		"success_rate", fmt.Sprintf("%.2f%%", float64(published)/float64(pubSubConfig.MessageCount)*100))
+	logger.Info("Subscription Statistics:",
+		"received", fmt.Sprintf("%d/%d", received, pubSubConfig.MessageCount),
+		"success_rate", fmt.Sprintf("%.2f%%", float64(received)/float64(pubSubConfig.MessageCount)*100))
+	logger.Info("Overall:", "duration", duration)
 
 	if published == pubSubConfig.MessageCount && received == pubSubConfig.MessageCount {
-		logger.Debug("✓ All messages published and received successfully")
+		logger.Info("Status: SUCCESS - All messages published and received")
 		return nil
 	}
 
@@ -209,19 +213,36 @@ func publishMessages(ctx context.Context, clientConfig ClientConfig, pubSubConfi
 	}
 	u.Path = "api/ws/" + clientConfig.Path
 
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
-		TLSClientConfig:  pubSubConfig.TLSConfig,
+	var conn *websocket.Conn
+
+	retryConfig := pkg.RetryConfig{
+		MaxRetries: pkg.MaxRetries,
+		Timeout:    pubSubConfig.Timeout,
+		Logger:     logger,
 	}
 
-	var httpHeaders = http.Header{}
-	for k, v := range clientConfig.Headers {
-		httpHeaders.Set(k, v)
-	}
+	// Retry connection
+	err = pkg.RetryWithExponentialBackoff(retryConfig, func() error {
+		dialer := websocket.Dialer{
+			HandshakeTimeout: 10 * time.Second,
+			TLSClientConfig:  pubSubConfig.TLSConfig,
+		}
 
-	conn, _, err := dialer.Dial(u.String(), httpHeaders)
+		var httpHeaders = http.Header{}
+		for k, v := range clientConfig.Headers {
+			httpHeaders.Set(k, v)
+		}
+
+		var dialErr error
+		conn, _, dialErr = dialer.Dial(u.String(), httpHeaders)
+		if dialErr != nil {
+			return fmt.Errorf("failed to connect to WebSocket server: %w", dialErr)
+		}
+		return nil
+	}, fmt.Sprintf("WebSocket connection to %s", u.String()))
+
 	if err != nil {
-		return fmt.Errorf("failed to connect to WebSocket server: %w", err)
+		return err
 	}
 	defer conn.Close()
 
@@ -269,20 +290,37 @@ func subscribeMessages(ctx context.Context, clientConfig ClientConfig, pubSubCon
 	}
 	u.Path = "api/ws/" + clientConfig.Path
 
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
-		TLSClientConfig:  pubSubConfig.TLSConfig,
+	var conn *websocket.Conn
+
+	retryConfig := pkg.RetryConfig{
+		MaxRetries: pkg.MaxRetries,
+		Timeout:    pubSubConfig.Timeout,
+		Logger:     logger,
 	}
 
-	var httpHeaders = http.Header{}
-	for k, v := range clientConfig.Headers {
-		httpHeaders.Set(k, v)
-	}
+	// Retry connection
+	err = pkg.RetryWithExponentialBackoff(retryConfig, func() error {
+		dialer := websocket.Dialer{
+			HandshakeTimeout: 10 * time.Second,
+			TLSClientConfig:  pubSubConfig.TLSConfig,
+		}
 
-	conn, _, err := dialer.Dial(u.String(), httpHeaders)
+		var httpHeaders = http.Header{}
+		for k, v := range clientConfig.Headers {
+			httpHeaders.Set(k, v)
+		}
+
+		var dialErr error
+		conn, _, dialErr = dialer.Dial(u.String(), httpHeaders)
+		if dialErr != nil {
+			return fmt.Errorf("failed to connect to WebSocket server: %w", dialErr)
+		}
+		return nil
+	}, fmt.Sprintf("WebSocket connection to %s", u.String()))
+
 	if err != nil {
 		close(readyChan)
-		return fmt.Errorf("failed to connect to WebSocket server: %w", err)
+		return err
 	}
 	defer conn.Close()
 

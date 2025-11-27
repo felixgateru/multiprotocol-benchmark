@@ -11,35 +11,41 @@ import (
 
 // ProtocolResult holds the aggregated results for a single protocol test
 type ProtocolResult struct {
-	Protocol         string        `json:"protocol"`
-	TotalClients     int           `json:"total_clients"`
-	TotalChannels    int           `json:"total_channels"`
-	TotalTests       int           `json:"total_tests"`
-	SuccessfulTests  int           `json:"successful_tests"`
-	FailedTests      int           `json:"failed_tests"`
-	SuccessRate      float64       `json:"success_rate_percent"`
-	TotalMessages    int           `json:"total_messages"`
-	MessageSize      int           `json:"message_size_bytes"`
-	TotalDataSent    int64         `json:"total_data_sent_bytes"`
-	TotalDataSentMB  float64       `json:"total_data_sent_mb"`
-	TotalDuration    time.Duration `json:"total_duration_ns"`
-	AvgDuration      time.Duration `json:"avg_duration_per_test_ns"`
-	TotalDurationSec float64       `json:"total_duration_seconds"`
-	Throughput       float64       `json:"throughput_msgs_per_sec"`
-	Bandwidth        float64       `json:"bandwidth_mbps"`
-	Errors           []string      `json:"errors,omitempty"`
+	Protocol           string        `json:"protocol"`
+	TotalClients       int           `json:"total_clients"`
+	TotalChannels      int           `json:"total_channels"`
+	TotalTests         int           `json:"total_tests"`
+	SuccessfulTests    int           `json:"successful_tests"`
+	FailedTests        int           `json:"failed_tests"`
+	SuccessRate        float64       `json:"success_rate_percent"`
+	TotalMessages      int           `json:"total_messages"`
+	PublishedMessages  int           `json:"published_messages"`
+	ReceivedMessages   int           `json:"received_messages"`
+	PublishSuccessRate float64       `json:"publish_success_rate_percent"`
+	ReceiveSuccessRate float64       `json:"receive_success_rate_percent"`
+	MessageSize        int           `json:"message_size_bytes"`
+	TotalDataSent      int64         `json:"total_data_sent_bytes"`
+	TotalDataSentMB    float64       `json:"total_data_sent_mb"`
+	TotalDuration      time.Duration `json:"total_duration_ns"`
+	AvgDuration        time.Duration `json:"avg_duration_per_test_ns"`
+	TotalDurationSec   float64       `json:"total_duration_seconds"`
+	Throughput         float64       `json:"throughput_msgs_per_sec"`
+	Bandwidth          float64       `json:"bandwidth_mbps"`
+	Errors             []string      `json:"errors,omitempty"`
 }
 
 // TestResult represents a single test execution
 type TestResult struct {
-	Protocol  string
-	ClientID  string
-	ChannelID string
-	Topic     string
-	Success   bool
-	Error     error
-	Duration  time.Duration
-	Messages  int
+	Protocol          string
+	ClientID          string
+	ChannelID         string
+	Topic             string
+	Success           bool
+	Error             error
+	Duration          time.Duration
+	Messages          int // Total messages (published + received)
+	PublishedMessages int // Messages published
+	ReceivedMessages  int // Messages received/subscribed
 }
 
 // ResultsAggregator collects and aggregates test results
@@ -85,12 +91,16 @@ func (ra *ResultsAggregator) GenerateReport(messageSize int, delay time.Duration
 		clientMap := make(map[string]bool)
 		channelMap := make(map[string]bool)
 		totalMessages := 0
+		totalPublished := 0
+		totalReceived := 0
 
 		for _, result := range results {
 			clientMap[result.ClientID] = true
 			channelMap[result.ChannelID] = true
 			totalDuration += result.Duration
 			totalMessages += result.Messages
+			totalPublished += result.PublishedMessages
+			totalReceived += result.ReceivedMessages
 
 			if result.Success {
 				pr.SuccessfulTests++
@@ -105,6 +115,17 @@ func (ra *ResultsAggregator) GenerateReport(messageSize int, delay time.Duration
 		pr.TotalClients = len(clientMap)
 		pr.TotalChannels = len(channelMap)
 		pr.TotalMessages = totalMessages
+		pr.PublishedMessages = totalPublished
+		pr.ReceivedMessages = totalReceived
+
+		// Calculate success rates for publish and receive based on actual counts
+		if totalPublished > 0 {
+			pr.PublishSuccessRate = 100.0 // If we got published count, it succeeded
+		}
+		if totalReceived > 0 && totalPublished > 0 {
+			pr.ReceiveSuccessRate = float64(totalReceived) / float64(totalPublished) * 100
+		}
+
 		pr.TotalDataSent = int64(totalMessages * messageSize)
 		pr.TotalDataSentMB = float64(pr.TotalDataSent) / (1024 * 1024)
 		pr.TotalDuration = totalDuration
@@ -182,16 +203,30 @@ func (ra *ResultsAggregator) PrintSummary(messageSize int, delay time.Duration) 
 		fmt.Printf("  Failed:               %d\n", pr.FailedTests)
 		fmt.Printf("  Success Rate:         %.2f%%\n", pr.SuccessRate)
 		fmt.Println()
-		fmt.Printf("  Total Messages:       %d\n", pr.TotalMessages)
-		fmt.Printf("  Message Size:         %d bytes\n", pr.MessageSize)
-		fmt.Printf("  Total Data Sent:      %.2f MB (%d bytes)\n", pr.TotalDataSentMB, pr.TotalDataSent)
+		fmt.Printf("  Publishing Metrics:\n")
+		fmt.Printf("    Published Messages: %d\n", pr.PublishedMessages)
+		if pr.PublishSuccessRate > 0 {
+			fmt.Printf("    Publish Success:    %.2f%%\n", pr.PublishSuccessRate)
+		}
 		fmt.Println()
-		fmt.Printf("  Total Duration:       %.2f seconds\n", pr.TotalDurationSec)
-		fmt.Printf("  Avg Duration/Test:    %v\n", pr.AvgDuration)
-		fmt.Printf("  Throughput:           %.2f msgs/sec\n", pr.Throughput)
+		fmt.Printf("  Subscription Metrics:\n")
+		fmt.Printf("    Received Messages:  %d\n", pr.ReceivedMessages)
+		if pr.ReceiveSuccessRate > 0 {
+			fmt.Printf("    Receive Success:    %.2f%%\n", pr.ReceiveSuccessRate)
+		}
+		fmt.Println()
+		fmt.Printf("  Overall Metrics:\n")
+		fmt.Printf("    Total Messages:     %d\n", pr.TotalMessages)
+		fmt.Printf("    Message Size:       %d bytes\n", pr.MessageSize)
+		fmt.Printf("    Total Data Sent:    %.2f MB (%d bytes)\n", pr.TotalDataSentMB, pr.TotalDataSent)
+		fmt.Println()
+		fmt.Printf("  Performance:\n")
+		fmt.Printf("    Total Duration:     %.2f seconds\n", pr.TotalDurationSec)
+		fmt.Printf("    Avg Duration/Test:  %v\n", pr.AvgDuration)
+		fmt.Printf("    Throughput:         %.2f msgs/sec\n", pr.Throughput)
 
 		if delay == 0 && pr.Bandwidth > 0 {
-			fmt.Printf("  Bandwidth:            %.2f Mbps\n", pr.Bandwidth)
+			fmt.Printf("    Bandwidth:          %.2f Mbps\n", pr.Bandwidth)
 		}
 
 		if len(pr.Errors) > 0 {
