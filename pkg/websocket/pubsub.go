@@ -122,7 +122,7 @@ type ClientPathConfig struct {
 }
 
 // RunPubSub runs a single publisher and subscriber for WebSocket
-func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog.Logger) error {
+func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stats := NewMessageStats()
@@ -142,7 +142,7 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog
 	select {
 	case <-readyChan:
 		logger.Debug("Subscriber ready, starting publisher")
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		return fmt.Errorf("timeout waiting for subscriber to be ready")
 	case <-ctx.Done():
 		return ctx.Err()
@@ -182,6 +182,12 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog
 	published, received := stats.GetCounts()
 	duration := stats.GetDuration()
 
+	if pubSubConfig.MessageCount == 0 {
+		logger.Info("=== WebSocket Final Statistics ===")
+		logger.Info("No messages configured")
+		return nil
+	}
+
 	logger.Info("=== WebSocket Final Statistics ===")
 	logger.Info("Publishing Statistics:",
 		"published", fmt.Sprintf("%d/%d", published, pubSubConfig.MessageCount),
@@ -206,43 +212,26 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog
 	return nil
 }
 
-func publishMessages(ctx context.Context, clientConfig ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, logger slog.Logger) error {
+func publishMessages(ctx context.Context, clientConfig ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, logger *slog.Logger) error {
 	u, err := url.Parse(clientConfig.ServerURL)
 	if err != nil {
 		return fmt.Errorf("invalid server URL: %w", err)
 	}
 	u.Path = "api/ws/" + clientConfig.Path
 
-	var conn *websocket.Conn
-
-	retryConfig := pkg.RetryConfig{
-		MaxRetries: pkg.MaxRetries,
-		Timeout:    pubSubConfig.Timeout,
-		Logger:     logger,
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+		TLSClientConfig:  pubSubConfig.TLSConfig,
 	}
 
-	// Retry connection
-	err = pkg.RetryWithExponentialBackoff(retryConfig, func() error {
-		dialer := websocket.Dialer{
-			HandshakeTimeout: 10 * time.Second,
-			TLSClientConfig:  pubSubConfig.TLSConfig,
-		}
+	var httpHeaders = http.Header{}
+	for k, v := range clientConfig.Headers {
+		httpHeaders.Set(k, v)
+	}
 
-		var httpHeaders = http.Header{}
-		for k, v := range clientConfig.Headers {
-			httpHeaders.Set(k, v)
-		}
-
-		var dialErr error
-		conn, _, dialErr = dialer.Dial(u.String(), httpHeaders)
-		if dialErr != nil {
-			return fmt.Errorf("failed to connect to WebSocket server: %w", dialErr)
-		}
-		return nil
-	}, fmt.Sprintf("WebSocket connection to %s", u.String()))
-
+	conn, _, err := dialer.Dial(u.String(), httpHeaders)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to WebSocket server: %w", err)
 	}
 	defer conn.Close()
 
@@ -282,7 +271,7 @@ func publishMessages(ctx context.Context, clientConfig ClientConfig, pubSubConfi
 	return nil
 }
 
-func subscribeMessages(ctx context.Context, clientConfig ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, readyChan chan struct{}, logger slog.Logger) error {
+func subscribeMessages(ctx context.Context, clientConfig ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, readyChan chan struct{}, logger *slog.Logger) error {
 	u, err := url.Parse(clientConfig.ServerURL)
 	if err != nil {
 		close(readyChan)
@@ -290,37 +279,20 @@ func subscribeMessages(ctx context.Context, clientConfig ClientConfig, pubSubCon
 	}
 	u.Path = "api/ws/" + clientConfig.Path
 
-	var conn *websocket.Conn
-
-	retryConfig := pkg.RetryConfig{
-		MaxRetries: pkg.MaxRetries,
-		Timeout:    pubSubConfig.Timeout,
-		Logger:     logger,
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+		TLSClientConfig:  pubSubConfig.TLSConfig,
 	}
 
-	// Retry connection
-	err = pkg.RetryWithExponentialBackoff(retryConfig, func() error {
-		dialer := websocket.Dialer{
-			HandshakeTimeout: 10 * time.Second,
-			TLSClientConfig:  pubSubConfig.TLSConfig,
-		}
+	var httpHeaders = http.Header{}
+	for k, v := range clientConfig.Headers {
+		httpHeaders.Set(k, v)
+	}
 
-		var httpHeaders = http.Header{}
-		for k, v := range clientConfig.Headers {
-			httpHeaders.Set(k, v)
-		}
-
-		var dialErr error
-		conn, _, dialErr = dialer.Dial(u.String(), httpHeaders)
-		if dialErr != nil {
-			return fmt.Errorf("failed to connect to WebSocket server: %w", dialErr)
-		}
-		return nil
-	}, fmt.Sprintf("WebSocket connection to %s", u.String()))
-
+	conn, _, err := dialer.Dial(u.String(), httpHeaders)
 	if err != nil {
 		close(readyChan)
-		return err
+		return fmt.Errorf("failed to connect to WebSocket server: %w", err)
 	}
 	defer conn.Close()
 

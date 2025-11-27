@@ -187,18 +187,12 @@ func createHTTPClient(timeout time.Duration, tlsConfig *tls.Config) *http.Client
 	}
 }
 
-func publishMessages(ctx context.Context, client *http.Client, config ClientConfig, pubConfig PublishConfig, stats *MessageStats, wg *sync.WaitGroup, logger slog.Logger) {
+func publishMessages(ctx context.Context, client *http.Client, config ClientConfig, pubConfig PublishConfig, stats *MessageStats, wg *sync.WaitGroup, logger *slog.Logger) {
 	defer wg.Done()
 
 	url := config.BaseURL + "/" + config.Endpoint
 	logger.Debug("url", "url", url)
 	logger.Debug("Starting publisher", "message_count", pubConfig.MessageCount, "url", url, "delay", pubConfig.Delay)
-
-	retryConfig := pkg.RetryConfig{
-		MaxRetries: pkg.MaxRetries,
-		Timeout:    pubConfig.Timeout,
-		Logger:     logger,
-	}
 
 	for i := 1; i <= pubConfig.MessageCount; i++ {
 		select {
@@ -218,40 +212,40 @@ func publishMessages(ctx context.Context, client *http.Client, config ClientConf
 			startTime := time.Now()
 			success := false
 
-			// Retry logic for publishing
-			err = pkg.RetryWithExponentialBackoff(retryConfig, func() error {
-				req, reqErr := http.NewRequestWithContext(ctx, pubConfig.Method, url, bytes.NewBufferString(payload))
-				if reqErr != nil {
-					return fmt.Errorf("failed to create request: %w", reqErr)
-				}
+			// Direct publish without retry
+			req, err := http.NewRequestWithContext(ctx, pubConfig.Method, url, bytes.NewBufferString(payload))
+			if err != nil {
+				responseTime := time.Since(startTime)
+				logger.Warn("Failed to create request", "message_id", i, "error", err)
+				stats.IncrementPublished(i, false, responseTime)
+				continue
+			}
 
-				req.Header.Set("Content-Type", "application/senml+json")
-				for key, value := range config.Headers {
-					req.Header.Set(key, value)
-				}
+			req.Header.Set("Content-Type", "application/senml+json")
+			for key, value := range config.Headers {
+				req.Header.Set(key, value)
+			}
 
-				resp, doErr := client.Do(req)
-				if doErr != nil {
-					return fmt.Errorf("failed to send request: %w", doErr)
-				}
-				defer resp.Body.Close()
-
-				body, _ := io.ReadAll(resp.Body)
-
-				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-					success = true
-					return nil
-				}
-
-				return fmt.Errorf("got status code %d: %s", resp.StatusCode, string(body))
-			}, fmt.Sprintf("HTTP publish message %d", i))
-
+			resp, err := client.Do(req)
 			responseTime := time.Since(startTime)
 
 			if err != nil {
-				logger.Warn("Failed to publish message after retries", "message_id", i, "error", err)
+				logger.Warn("Failed to publish message", "message_id", i, "error", err)
+				stats.IncrementPublished(i, false, responseTime)
+				if i < pubConfig.MessageCount {
+					time.Sleep(pubConfig.Delay)
+				}
+				continue
+			}
+
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				success = true
+				logger.Debug("Published message", "message_id", i, "status", resp.StatusCode, "response_time", responseTime)
 			} else {
-				logger.Debug("Published message", "message_id", i, "response_time", responseTime)
+				logger.Debug("Published message but got error", "message_id", i, "status", resp.StatusCode, "body", string(body))
 			}
 
 			stats.IncrementPublished(i, success, responseTime)
@@ -265,7 +259,7 @@ func publishMessages(ctx context.Context, client *http.Client, config ClientConf
 	logger.Debug("Publisher: all messages sent")
 }
 
-func RunPublish(clientConfig ClientConfig, pubConfig PublishConfig, logger slog.Logger) error {
+func RunPublish(clientConfig ClientConfig, pubConfig PublishConfig, logger *slog.Logger) error {
 	stats := NewMessageStats()
 
 	httpClient := createHTTPClient(10*time.Second, pubConfig.TLSConfig)

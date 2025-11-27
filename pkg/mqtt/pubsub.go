@@ -124,11 +124,10 @@ func (ms *MessageStats) GetDuration() time.Duration {
 	return ms.endTime.Sub(ms.startTime)
 }
 
-func createMQTTClient(config ClientConfig, pubSubConfig PubSubConfig, logger slog.Logger) (mqtt.Client, error) {
+func createMQTTClient(config ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) (mqtt.Client, error) {
 	var client mqtt.Client
 
 	retryConfig := pkg.RetryConfig{
-		MaxRetries: pkg.MaxRetries,
 		Timeout:    pubSubConfig.Timeout,
 		Logger:     logger,
 	}
@@ -169,7 +168,7 @@ func createMQTTClient(config ClientConfig, pubSubConfig PubSubConfig, logger slo
 	return client, nil
 }
 
-func publishMessages(ctx context.Context, client mqtt.Client, config ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, wg *sync.WaitGroup, logger slog.Logger) {
+func publishMessages(ctx context.Context, client mqtt.Client, config ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, wg *sync.WaitGroup, logger *slog.Logger) {
 	defer wg.Done()
 
 	logger.Debug("MQTT publisher starting", "message_count", pubSubConfig.MessageCount, "delay", pubSubConfig.Delay)
@@ -208,7 +207,7 @@ func publishMessages(ctx context.Context, client mqtt.Client, config ClientConfi
 }
 
 // subscribeMessages subscribes to messages from the MQTT broker
-func subscribeMessages(ctx context.Context, client mqtt.Client, config ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, readyChan chan<- struct{}, wg *sync.WaitGroup, logger slog.Logger) {
+func subscribeMessages(ctx context.Context, client mqtt.Client, config ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, readyChan chan<- struct{}, wg *sync.WaitGroup, logger *slog.Logger) {
 	defer wg.Done()
 
 	receivedChan := make(chan struct{}, pubSubConfig.MessageCount)
@@ -262,7 +261,7 @@ func subscribeMessages(ctx context.Context, client mqtt.Client, config ClientCon
 	}
 }
 
-func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog.Logger) error {
+func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) error {
 	stats := NewMessageStats()
 
 	pubClientConfig := clientConfig
@@ -323,13 +322,18 @@ func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog
 	published, received := stats.GetCounts()
 	duration := stats.GetDuration()
 
+	var pubSuccessRate, subSuccessRate float64
+	if pubSubConfig.MessageCount > 0 {
+		pubSuccessRate = float64(published) / float64(pubSubConfig.MessageCount) * 100
+		subSuccessRate = float64(received) / float64(pubSubConfig.MessageCount) * 100
+	}
 	logger.Info("=== MQTT Final Statistics ===")
 	logger.Info("Publishing Statistics:",
 		"published", fmt.Sprintf("%d/%d", published, pubSubConfig.MessageCount),
-		"success_rate", fmt.Sprintf("%.2f%%", float64(published)/float64(pubSubConfig.MessageCount)*100))
+		"success_rate", fmt.Sprintf("%.2f%%", pubSuccessRate))
 	logger.Info("Subscription Statistics:",
 		"received", fmt.Sprintf("%d/%d", received, pubSubConfig.MessageCount),
-		"success_rate", fmt.Sprintf("%.2f%%", float64(received)/float64(pubSubConfig.MessageCount)*100))
+		"success_rate", fmt.Sprintf("%.2f%%", subSuccessRate))
 	logger.Info("Overall:", "duration", duration)
 
 	if published == pubSubConfig.MessageCount && received == pubSubConfig.MessageCount {

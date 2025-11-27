@@ -128,38 +128,23 @@ type ClientPathConfig struct {
 	ClientNum    int
 }
 
-func createCoapClient(config ClientConfig, pubSubConfig PubSubConfig, logger slog.Logger) (*client.Conn, error) {
-	var conn *client.Conn
+func createCoapClient(config ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) (*client.Conn, error) {
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	retryConfig := pkg.RetryConfig{
-		MaxRetries: pkg.MaxRetries,
-		Timeout:    pubSubConfig.Timeout,
-		Logger:     logger,
+	dtlsCfg := &piondtls.Config{
+		InsecureSkipVerify: true,
+		RootCAs:            pubSubConfig.TLSConfig.RootCAs,
 	}
-
-	err := pkg.RetryWithExponentialBackoff(retryConfig, func() error {
-		dtlsCfg := &piondtls.Config{
-			InsecureSkipVerify: true,
-			RootCAs:            pubSubConfig.TLSConfig.RootCAs,
-		}
-		var dialErr error
-		conn, dialErr = dtls.Dial(addr, dtlsCfg)
-		if dialErr != nil {
-			return fmt.Errorf("failed to dial CoAP server: %w", dialErr)
-		}
-		return nil
-	}, fmt.Sprintf("CoAP connection to %s", addr))
-
+	conn, err := dtls.Dial(addr, dtlsCfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to dial CoAP server: %w", err)
 	}
 
 	logger.Debug("Connected to CoAP server", "addr", addr)
 	return conn, nil
 }
 
-func publishMessages(ctx context.Context, conn *client.Conn, config ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, wg *sync.WaitGroup, logger slog.Logger) {
+func publishMessages(ctx context.Context, conn *client.Conn, config ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, wg *sync.WaitGroup, logger *slog.Logger) {
 	defer wg.Done()
 
 	logger.Debug("Starting publisher", "messageCount", pubSubConfig.MessageCount, "delay", pubSubConfig.Delay)
@@ -200,7 +185,7 @@ func publishMessages(ctx context.Context, conn *client.Conn, config ClientConfig
 	logger.Debug("Publisher: all messages sent")
 }
 
-func observeMessages(ctx context.Context, conn *client.Conn, config ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, readyChan chan<- struct{}, wg *sync.WaitGroup, logger slog.Logger) {
+func observeMessages(ctx context.Context, conn *client.Conn, config ClientConfig, pubSubConfig PubSubConfig, stats *MessageStats, readyChan chan<- struct{}, wg *sync.WaitGroup, logger *slog.Logger) {
 	defer wg.Done()
 
 	receivedChan := make(chan struct{}, pubSubConfig.MessageCount)
@@ -269,7 +254,7 @@ func observeMessages(ctx context.Context, conn *client.Conn, config ClientConfig
 	}
 }
 
-func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger slog.Logger) error {
+func RunPubSub(clientConfig ClientConfig, pubSubConfig PubSubConfig, logger *slog.Logger) error {
 	stats := NewMessageStats()
 
 	pubConn, err := createCoapClient(clientConfig, pubSubConfig, logger)

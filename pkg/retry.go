@@ -7,23 +7,22 @@ import (
 )
 
 const (
-	MaxRetries        = 3
-	InitialBackoff    = 1 * time.Second
-	BackoffMultiplier = 2
+	maxRetries        = 3
+	initialBackoff    = 1 * time.Second
+	backoffMultiplier = 2
 )
 
 type RetryConfig struct {
-	MaxRetries int
-	Timeout    time.Duration
-	Logger     slog.Logger
+	Timeout time.Duration
+	Logger  *slog.Logger
 }
 
 func RetryWithExponentialBackoff(config RetryConfig, operation func() error, operationName string) error {
 	var lastErr error
-	backoff := InitialBackoff
+	backoff := initialBackoff
 
-	for attempt := 1; attempt <= config.MaxRetries; attempt++ {
-		config.Logger.Debug("Attempting operation", "operation", operationName, "attempt", attempt, "max_retries", config.MaxRetries)
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		config.Logger.Debug("Attempting operation", "operation", operationName, "attempt", attempt, "max_retries", maxRetries)
 
 		err := operation()
 		if err == nil {
@@ -36,7 +35,7 @@ func RetryWithExponentialBackoff(config RetryConfig, operation func() error, ope
 		lastErr = err
 		config.Logger.Warn("Operation failed", "operation", operationName, "attempt", attempt, "error", err)
 
-		if attempt < config.MaxRetries {
+		if attempt < maxRetries {
 			if config.Timeout > 0 && backoff > config.Timeout {
 				backoff = config.Timeout
 			}
@@ -44,9 +43,9 @@ func RetryWithExponentialBackoff(config RetryConfig, operation func() error, ope
 			config.Logger.Debug("Retrying after backoff", "operation", operationName, "backoff", backoff)
 			time.Sleep(backoff)
 
-			backoff *= BackoffMultiplier
+			backoff *= backoffMultiplier
 		}
 	}
 
-	return fmt.Errorf("%s failed after %d attempts: %w", operationName, config.MaxRetries, lastErr)
+	return fmt.Errorf("%s failed after %d attempts: %w", operationName, maxRetries, lastErr)
 }

@@ -214,28 +214,28 @@ func main() {
 	if cfg.RunMQTT {
 		go func() {
 			defer wg.Done()
-			testMQTTPubSub(cfg, clientIDs, channelIDs, clientSecretMap, aggregator, *logger, tlsConfig)
+			testMQTTPubSub(cfg, clientIDs, channelIDs, clientSecretMap, aggregator, logger, tlsConfig)
 		}()
 	}
 
 	if cfg.RunCOAP {
 		go func() {
 			defer wg.Done()
-			testCOAPPubSub(cfg, clientIDs, channelIDs, clientSecretMap, aggregator, *logger, tlsConfig)
+			testCOAPPubSub(cfg, clientIDs, channelIDs, clientSecretMap, aggregator, logger, tlsConfig)
 		}()
 	}
 
 	if cfg.RunHTTP {
 		go func() {
 			defer wg.Done()
-			testHTTPPublish(cfg, clientIDs, channelIDs, clientSecretMap, aggregator, *logger, tlsConfig)
+			testHTTPPublish(cfg, clientIDs, channelIDs, clientSecretMap, aggregator, logger, tlsConfig)
 		}()
 	}
 
 	if cfg.RunWS {
 		go func() {
 			defer wg.Done()
-			testWSPubSub(cfg, clientIDs, channelIDs, clientSecretMap, aggregator, *logger, tlsConfig)
+			testWSPubSub(cfg, clientIDs, channelIDs, clientSecretMap, aggregator, logger, tlsConfig)
 		}()
 	}
 
@@ -256,10 +256,9 @@ func main() {
 	}
 
 	if createdResources && len(channelIDs) > 0 && len(clientIDs) > 0 {
-		logger.Info("Cleaning up  provisioned resources")
+		logger.Info("Cleaning up provisioned resources")
 		if err := cleanUpProvision(context.Background(), channelIDs, clientIDs, cfg.DomainID, token.AccessToken, channelsSDK, clientsSDK, logger); err == nil {
 			logger.Info("Cleanup completed successfully")
-			exitCode = 0
 			return
 		}
 		logger.Error("Cleanup failed", "error", err)
@@ -280,7 +279,7 @@ func getIDS(objects any) []string {
 	return ids
 }
 
-func testMQTTPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap map[string]string, aggregator *ResultsAggregator, logger slog.Logger, tlsConfig *tls.Config) {
+func testMQTTPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap map[string]string, aggregator *ResultsAggregator, logger *slog.Logger, tlsConfig *tls.Config) {
 	pubSubCfg := pkgmqtt.PubSubConfig{
 		MessageCount: cfg.MQTTMessageCount,
 		Delay:        cfg.MQTTDelay,
@@ -339,7 +338,7 @@ func testMQTTPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap 
 	wg.Wait()
 }
 
-func testCOAPPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap map[string]string, aggregator *ResultsAggregator, logger slog.Logger, tlsConfig *tls.Config) {
+func testCOAPPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap map[string]string, aggregator *ResultsAggregator, logger *slog.Logger, tlsConfig *tls.Config) {
 	pubSubCfg := pkgcoap.PubSubConfig{
 		MessageCount: cfg.COAPMessageCount,
 		Delay:        cfg.COAPDelay,
@@ -396,7 +395,7 @@ func testCOAPPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap 
 	wg.Wait()
 }
 
-func testHTTPPublish(cfg Config, clientIDs, channelIDs []string, clientSecretMap map[string]string, aggregator *ResultsAggregator, logger slog.Logger, tlsConfig *tls.Config) {
+func testHTTPPublish(cfg Config, clientIDs, channelIDs []string, clientSecretMap map[string]string, aggregator *ResultsAggregator, logger *slog.Logger, tlsConfig *tls.Config) {
 	pubCfg := pkghttp.PublishConfig{
 		MessageCount: cfg.HTTPMessageCount,
 		Delay:        cfg.HTTPDelay,
@@ -456,7 +455,7 @@ func testHTTPPublish(cfg Config, clientIDs, channelIDs []string, clientSecretMap
 	wg.Wait()
 }
 
-func testWSPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap map[string]string, aggregator *ResultsAggregator, logger slog.Logger, tlsConfig *tls.Config) {
+func testWSPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap map[string]string, aggregator *ResultsAggregator, logger *slog.Logger, tlsConfig *tls.Config) {
 	pubCfg := pkgws.PubSubConfig{
 		MessageCount: cfg.WSMessageCount,
 		Delay:        cfg.WSDelay,
