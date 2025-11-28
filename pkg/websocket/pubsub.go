@@ -248,9 +248,7 @@ func publishMessages(ctx context.Context, clientConfig ClientConfig, pubSubConfi
 		default:
 		}
 
-		// Create SenML message with variable size padding
-		baseName := fmt.Sprintf("msg_%d", i)
-		message, err := pkg.CreateSenMLMessage(baseName, i, pubSubConfig.MessageSize)
+		message, err := pkg.CreateSenMLMessage(i, pubSubConfig.MessageSize)
 		if err != nil {
 			logger.Warn("Failed to create SenML message", "message_id", i, "error", err)
 			continue

@@ -4,12 +4,9 @@ go 1.25.3
 
 require (
 	github.com/0x6flab/namegenerator v1.4.0
-	github.com/BurntSushi/toml v1.5.0
 	github.com/absmach/supermq v0.18.2
-	github.com/caarlos0/env/v11 v11.3.1
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/joho/godotenv v1.5.1
 	github.com/pion/dtls/v3 v3.0.7
 	github.com/plgd-dev/go-coap/v3 v3.4.1
 )
@@ -32,7 +29,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
-	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/transport/v3 v3.0.8 // indirect
 	github.com/x448/float16 v0.8.4 // indirect

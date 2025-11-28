@@ -12,32 +12,20 @@ import (
 	"time"
 
 	"github.com/0x6flab/namegenerator"
-	"github.com/BurntSushi/toml"
 	smqlog "github.com/absmach/supermq/logger"
 	"github.com/absmach/supermq/pkg/sdk"
-	"github.com/absmach/supermq/pkg/ulid"
-	"github.com/absmach/supermq/pkg/uuid"
-	"github.com/caarlos0/env/v11"
 	"github.com/felixgateru/multiprotocol-benchmark/pkg"
 	pkgcoap "github.com/felixgateru/multiprotocol-benchmark/pkg/coap"
 	pkghttp "github.com/felixgateru/multiprotocol-benchmark/pkg/http"
 	pkgmqtt "github.com/felixgateru/multiprotocol-benchmark/pkg/mqtt"
 	pkgws "github.com/felixgateru/multiprotocol-benchmark/pkg/websocket"
-	"github.com/joho/godotenv"
 	"github.com/plgd-dev/go-coap/v3/message"
 )
 
 var nameGen = namegenerator.NewGenerator()
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("error loading .env file")
-	}
-	cfg, err := NewConfig(env.Options{})
-	if err != nil {
-		log.Fatal("failed to load config from env variables")
-	}
+	cfg := NewConfig()
 
 	logger, err := smqlog.New(os.Stdout, cfg.LogLevel)
 	if err != nil {
@@ -61,129 +49,6 @@ func main() {
 		} else {
 			logger.Info("Using system CA certificates")
 		}
-	}
-
-	sdkConf := sdk.Config{
-		ClientsURL:      cfg.ClientsURL,
-		UsersURL:        cfg.UsersURL,
-		DomainsURL:      cfg.DomainsURL,
-		ChannelsURL:     cfg.ChannelsURL,
-		MsgContentType:  sdk.CTJSONSenML,
-		TLSVerification: false,
-	}
-
-	s := sdk.NewSDK(sdkConf)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	usersSDK := pkg.NewUsersSDK(s)
-
-	channelsSDK := pkg.NewChannelsSDK(s)
-
-	didp := ulid.New()
-	domainsSDK := pkg.NewDomainsSDK(s, didp)
-	cidp := uuid.New()
-	clientsSDK := pkg.NewClientsSDK(s, cidp)
-
-	if cfg.Username == "" || cfg.Password == "" {
-		logger.Error("username or password cannot be empty")
-		exitCode = 1
-		return
-	}
-
-	token, err := usersSDK.CreateToken(ctx, cfg.Username, cfg.Password)
-	if err != nil {
-		logger.Error("CreateToken failed", "error", err)
-		exitCode = 1
-		return
-	}
-
-	switch cfg.DomainID {
-	case "":
-		domain, err := domainsSDK.CreateDomain(ctx, token.AccessToken)
-		if err != nil {
-			logger.Error("CreateDomain failed", "error", err)
-			exitCode = 1
-			return
-		}
-		cfg.DomainID = domain.ID
-		logger.Info("Created Domain", "domain_id", cfg.DomainID)
-	default:
-		logger.Info("Using provided DomainID from env", "domain_id", cfg.DomainID)
-	}
-
-	var prov ProvisionFile
-	var channelIDs, clientIDs []string
-	clientSecretMap := make(map[string]string)
-	createdResources := false
-
-	switch cfg.ProvisionFile {
-	case "":
-		createdResources = true
-		var channels []sdk.Channel
-		for i := 0; i < cfg.ChannelCount; i++ {
-			ch, err := channelsSDK.CreateChannel(ctx, cfg.DomainID, token.AccessToken)
-			if err != nil {
-				logger.Error("CreateChannel failed", "error", err)
-				exitCode = 1
-				return
-			}
-			channels = append(channels, ch)
-		}
-		channelIDs = getIDS(channels)
-		logger.Info("Created Channels", "IDs", channelIDs)
-
-		var clients []sdk.Client
-		for i := 0; i < cfg.ClientCount; i++ {
-			cl, err := clientsSDK.CreateClient(ctx, cfg.DomainID, token.AccessToken)
-			if err != nil {
-				logger.Error("CreateClient failed", "error", err)
-				exitCode = 1
-				return
-			}
-			clients = append(clients, cl)
-		}
-		clientIDs = getIDS(clients)
-		logger.Info("Created Clients", "IDs", clientIDs)
-		clientSecretMap = buildClientSecretMap(clients)
-
-		if len(channelIDs) > 0 && len(clientIDs) > 0 {
-			err = channelsSDK.ConnectClientsToChannels(ctx, channelIDs, clientIDs, cfg.DomainID, token.AccessToken)
-			if err != nil {
-				logger.Error("ConnectClientsToChannels failed", "error", err)
-				exitCode = 1
-				return
-			}
-			logger.Info("Successfully connected clients to channels")
-		} else {
-			logger.Warn("No clients or channels available to connect")
-		}
-
-		logger.Info("Successfully connected clients to channels")
-	default:
-		if _, err := os.Stat(cfg.ProvisionFile); err == nil {
-			if _, err := toml.DecodeFile(cfg.ProvisionFile, &prov); err != nil {
-				logger.Error("Failed to decode TOML file", "path", cfg.ProvisionFile, "error", err)
-				exitCode = 1
-				return
-			}
-			logger.Info("Loaded provisioning file", "path", cfg.ProvisionFile)
-		}
-		if len(prov.Channels) > 0 {
-			channelIDs = prov.Channels
-			logger.Info("Using provided Channels from config file", "count", len(channelIDs))
-		}
-
-		if len(prov.Clients) > 0 {
-			for _, c := range prov.Clients {
-				clientIDs = append(clientIDs, c.ID)
-				if c.Secret != "" {
-					clientSecretMap[c.ID] = c.Secret
-				}
-			}
-		}
-		logger.Info("Using provided Clients from config file", "count", len(clientIDs))
 	}
 
 	aggregator := NewResultsAggregator()
@@ -255,14 +120,14 @@ func main() {
 		logger.Info("Results saved to file", "file", resultsFile)
 	}
 
-	if createdResources && len(channelIDs) > 0 && len(clientIDs) > 0 {
-		logger.Info("Cleaning up provisioned resources")
-		if err := cleanUpProvision(context.Background(), channelIDs, clientIDs, cfg.DomainID, token.AccessToken, channelsSDK, clientsSDK, logger); err == nil {
-			logger.Info("Cleanup completed successfully")
-			return
-		}
-		logger.Error("Cleanup failed", "error", err)
-	}
+	// if createdResources && len(channelIDs) > 0 && len(clientIDs) > 0 {
+	// 	logger.Info("Cleaning up provisioned resources")
+	// 	if err := cleanUpProvision(context.Background(), channelIDs, clientIDs, cfg.DomainID, token.AccessToken, channelsSDK, clientsSDK, logger); err == nil {
+	// 		logger.Info("Cleanup completed successfully")
+	// 		return
+	// 	}
+	// 	logger.Error("Cleanup failed", "error", err)
+	// }
 }
 
 func getIDS(objects any) []string {
@@ -514,7 +379,7 @@ func testWSPubSub(cfg Config, clientIDs, channelIDs []string, clientSecretMap ma
 }
 
 func constructTopic(domainID, channelID, clientID, protocol string) string {
-	return fmt.Sprintf("m/%s/c/%s/test/%s/%s", domainID, channelID, clientID, protocol)
+	return fmt.Sprintf("m/%s/c/%s/%s-%s", domainID, channelID, clientID, protocol)
 }
 
 func buildClientSecretMap(clients []sdk.Client) map[string]string {

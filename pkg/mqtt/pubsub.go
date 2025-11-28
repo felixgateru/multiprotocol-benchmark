@@ -180,9 +180,7 @@ func publishMessages(ctx context.Context, client mqtt.Client, config ClientConfi
 			logger.Debug("MQTT publisher context cancelled, stopping")
 			return
 		default:
-			// Create SenML message with variable size padding
-			baseName := fmt.Sprintf("msg_%d", i)
-			message, err := pkg.CreateSenMLMessage(baseName, i, pubSubConfig.MessageSize)
+			message, err := pkg.CreateSenMLMessage(i, pubSubConfig.MessageSize)
 			if err != nil {
 				logger.Warn("MQTT failed to create SenML message", "message_num", i, "error", err)
 				continue

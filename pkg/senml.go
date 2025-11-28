@@ -21,7 +21,7 @@ type SenMLRecord struct {
 	UpdateTime  float64  `json:"ut,omitempty"`
 }
 
-func CreateSenMLMessage(baseName string, msgNum int, targetSize int) (string, error) {
+func CreateSenMLMessage(msgNum int, targetSize int) (string, error) {
 	timestamp := float64(time.Now().UnixNano()) / 1e9
 
 	// Use message number as a simulated sensor value
@@ -34,7 +34,7 @@ func CreateSenMLMessage(baseName string, msgNum int, targetSize int) (string, er
 		// Create initial record to see base size
 		initialRecord := []SenMLRecord{
 			{
-				BaseName: baseName,
+				BaseName: "",
 				BaseTime: timestamp,
 				Name:     "sensor",
 				Unit:     "count",
@@ -66,7 +66,7 @@ func CreateSenMLMessage(baseName string, msgNum int, targetSize int) (string, er
 		// Simple record without padding
 		records = []SenMLRecord{
 			{
-				BaseName: baseName,
+				BaseName: "",
 				BaseTime: timestamp,
 				Name:     "sensor",
 				Unit:     "count",
@@ -116,8 +116,4 @@ func ExtractMessageNumber(records []SenMLRecord) (int, error) {
 
 func floatPtr(f float64) *float64 {
 	return &f
-}
-
-func stringPtr(s string) *string {
-	return &s
 }

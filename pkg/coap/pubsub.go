@@ -155,9 +155,7 @@ func publishMessages(ctx context.Context, conn *client.Conn, config ClientConfig
 			logger.Debug("Publisher: context cancelled, stopping")
 			return
 		default:
-			// Create SenML message with variable size padding
-			baseName := fmt.Sprintf("msg_%d", i)
-			payload, err := pkg.CreateSenMLMessage(baseName, i, pubSubConfig.MessageSize)
+			payload, err := pkg.CreateSenMLMessage(i, pubSubConfig.MessageSize)
 			if err != nil {
 				logger.Warn("Failed to create SenML message", "message_id", i, "error", err)
 				continue
