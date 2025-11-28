@@ -8,14 +8,16 @@ import (
 )
 
 var (
+	domainID  = "dfd93a49-cb6c-49ba-b3dc-b4a79249d3ec"
 	clientIDs = []string{
-		"1d633a90-5a68-45f1-8295-d47e8bb099a3",
+		"ec3ed66c-6d19-408e-ab30-6f9c187e51a1",
 	}
 	channelIDs = []string{
-		"6ff4a7ea-4061-44da-9e73-594a65eebc43",
+		"fda3eabc-ab61-421d-8a68-b93eb9ae2029",
 	}
+	// Map of client IDs to their corresponding client secrets
 	clientSecretMap = map[string]string{
-		"1d633a90-5a68-45f1-8295-d47e8bb099a3": "244ba026-40d9-45da-b6e5-6cce4ae21a2a",
+		"ec3ed66c-6d19-408e-ab30-6f9c187e51a1": "65d73373-4bf9-4e07-b86a-d48518909989",
 	}
 )
 
@@ -48,12 +50,11 @@ const (
 	DefaultHTTPTimeout      = 60 * time.Second
 	DefaultHTTPMessageSize  = 256
 	DefaultWSBaseUrl        = "wss://messaging.magistrala.absmach.eu/api/ws"
-	DefaultWSMessageCount   = 1000
+	DefaultWSMessageCount   = 1000000
 	DefaultWSDelay          = 3 * time.Second
 	DefaultWSTimeout        = 60 * time.Second
 	DefaultWSMessageSize    = 256
 	DefaultProvisionFile    = ""
-	DefaultDomainID         = "7b73fb42-fa56-48d6-8eb0-0955becb462c"
 	DefaultSaveToFile       = false
 	DefaultCACertPath       = ""
 	DefaultTLSVerify        = true
@@ -62,8 +63,6 @@ const (
 	DefaultRunHTTP          = true
 	DefaultRunWS            = true
 )
-
-
 
 type Config struct {
 	Username         string
@@ -142,7 +141,7 @@ func NewConfig() Config {
 		WSTimeout:        DefaultWSTimeout,
 		WSMessageSize:    DefaultWSMessageSize,
 		ProvisionFile:    DefaultProvisionFile,
-		DomainID:         DefaultDomainID,
+		DomainID:         domainID,
 		SaveToFile:       DefaultSaveToFile,
 		CACertPath:       DefaultCACertPath,
 		TLSVerify:        DefaultTLSVerify,
