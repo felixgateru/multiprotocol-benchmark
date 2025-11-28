@@ -20,7 +20,7 @@ Download the latest release for your platform from the [Releases page](https://g
 ```bash
 git clone https://github.com/felixgateru/multiprotocol-benchmark.git
 cd multiprotocol-benchmark
-make build
+make run
 ```
 
 Or manually with Go:
@@ -29,38 +29,15 @@ Or manually with Go:
 go build -o multiprotocol-benchmark
 ```
 
-### Install via Go
-
-```bash
-go install github.com/felixgateru/multiprotocol-benchmark@latest
-```
-
 ## Configuration
 
 The tool requires a `.env` file for configuration.
 
 ### Quick Start
 
-1. **Copy the example configuration:**
+1. **Edit the configuration in the config.go file:**
 
-   ```bash
-   cp .env.example .env
-   ```
-
-   Or use the Makefile:
-
-   ```bash
-   make setup
-   ```
-
-2. **Edit `.env` with your credentials:**
-
-   ```bash
-   USERNAME=your_username
-   PASSWORD=your_password
-   ```
-
-3. **Run the benchmark:**
+2. **Run the benchmark:**
 
    ```bash
    make run
@@ -73,18 +50,6 @@ The tool requires a `.env` file for configuration.
    ```
 
 ### Configuration Options
-
-#### Required Variables
-
-- `USERNAME` - Your SuperMQ account username
-- `PASSWORD` - Your SuperMQ account password
-
-#### Optional Variables
-
-- `DOMAIN_ID` - Existing domain ID (if empty, a new domain will be created)
-- `CLIENT_COUNT` - Number of clients to create (default: 1)
-- `CHANNEL_COUNT` - Number of channels to create (default: 1)
-- `PROVISION_FILE` - Path to provision.toml file with pre-configured channels/clients
 
 #### Protocol-Specific Settings
 
@@ -142,14 +107,6 @@ make test
 # Clean build artifacts
 make clean
 
-# Cross-compile for multiple platforms
-make cross-compile
-
-# Format code
-make format
-
-# View all available commands
-make help
 ```
 
 ### Test Only MQTT Protocol
@@ -162,28 +119,6 @@ RUN_MQTT=true RUN_COAP=false RUN_HTTP=false RUN_WS=false ./multiprotocol-benchma
 
 ```bash
 MQTT_DELAY=0 COAP_DELAY=0 HTTP_DELAY=0 WS_DELAY=0 ./multiprotocol-benchmark
-```
-
-### Using Custom Provision File
-
-If you have existing channels and clients, create a `provision.toml`:
-
-```toml
-channels = ["channel_id_1", "channel_id_2"]
-
-[[clients]]
-id = "client_id_1"
-secret = "client_secret_1"
-
-[[clients]]
-id = "client_id_2"
-secret = "client_secret_2"
-```
-
-Then run:
-
-```bash
-PROVISION_FILE=provision.toml ./multiprotocol-benchmark
 ```
 
 ## Output
