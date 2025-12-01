@@ -8,16 +8,16 @@ import (
 )
 
 var (
-	domainID  = "dfd93a49-cb6c-49ba-b3dc-b4a79249d3ec"
+	domainID  = "7b73fb42-fa56-48d6-8eb0-0955becb462c"
 	clientIDs = []string{
-		"ec3ed66c-6d19-408e-ab30-6f9c187e51a1",
+		"c587ee72-20d4-4d6d-82cf-3db2d57c94f1",
 	}
 	channelIDs = []string{
-		"fda3eabc-ab61-421d-8a68-b93eb9ae2029",
+		"ca81c05f-1c3d-45bd-9156-f0fedbc436f5",
 	}
 	// Map of client IDs to their corresponding client secrets
 	clientSecretMap = map[string]string{
-		"ec3ed66c-6d19-408e-ab30-6f9c187e51a1": "65d73373-4bf9-4e07-b86a-d48518909989",
+		"c587ee72-20d4-4d6d-82cf-3db2d57c94f1": "12096c28-4360-4f85-9d33-81b6c4ebf9c1",
 	}
 )
 
@@ -29,12 +29,12 @@ const (
 	DefaultClientsURL       = "https://cloud.magistrala.absmach.eu/api"
 	DefaultDomainsURL       = "https://cloud.magistrala.absmach.eu/api"
 	DefaultChannelsURL      = "https://cloud.magistrala.absmach.eu/api"
-	DefaultLogLevel         = "info"
+	DefaultLogLevel         = "debug"
 	DefaultChannelCount     = 1
 	DefaultClientCount      = 1
 	DefaultMQTTBroker       = "tcp://messaging.magistrala.absmach.eu:1883"
-	DefaultMQTTMessageCount = 10000
-	DefaultMQTTDelay        = 0 * time.Second
+	DefaultMQTTMessageCount = 1000000
+	DefaultMQTTDelay        = 2 * time.Second
 	DefaultMQTTTimeout      = 60 * time.Second
 	DefaultMQTTMessageSize  = 256
 	DefaultMQTTQoS          = byte(0)
@@ -59,9 +59,9 @@ const (
 	DefaultCACertPath       = ""
 	DefaultTLSVerify        = true
 	DefaultRunMQTT          = true
-	DefaultRunCOAP          = false
-	DefaultRunHTTP          = false
-	DefaultRunWS            = false
+	DefaultRunCOAP          = true
+	DefaultRunHTTP          = true
+	DefaultRunWS            = true
 )
 
 type Config struct {
