@@ -29,12 +29,12 @@ const (
 	DefaultClientsURL       = "https://cloud.magistrala.absmach.eu/api"
 	DefaultDomainsURL       = "https://cloud.magistrala.absmach.eu/api"
 	DefaultChannelsURL      = "https://cloud.magistrala.absmach.eu/api"
-	DefaultLogLevel         = "debug"
+	DefaultLogLevel         = "info"
 	DefaultChannelCount     = 1
 	DefaultClientCount      = 1
 	DefaultMQTTBroker       = "tcp://messaging.magistrala.absmach.eu:1883"
-	DefaultMQTTMessageCount = 1000000
-	DefaultMQTTDelay        = 2 * time.Second
+	DefaultMQTTMessageCount = 10000
+	DefaultMQTTDelay        = 0 * time.Second
 	DefaultMQTTTimeout      = 60 * time.Second
 	DefaultMQTTMessageSize  = 256
 	DefaultMQTTQoS          = byte(0)
@@ -59,9 +59,9 @@ const (
 	DefaultCACertPath       = ""
 	DefaultTLSVerify        = true
 	DefaultRunMQTT          = true
-	DefaultRunCOAP          = true
-	DefaultRunHTTP          = true
-	DefaultRunWS            = true
+	DefaultRunCOAP          = false
+	DefaultRunHTTP          = false
+	DefaultRunWS            = false
 )
 
 type Config struct {

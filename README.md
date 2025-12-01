@@ -31,8 +31,6 @@ go build -o multiprotocol-benchmark
 
 ## Configuration
 
-The tool requires a `.env` file for configuration.
-
 ### Quick Start
 
 1. **Edit the configuration in the config.go file:**
